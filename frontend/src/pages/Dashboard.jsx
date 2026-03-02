@@ -1,161 +1,175 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, Briefcase, BarChart3 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { usePortfolio } from '../context/PortfolioContext';
+import { SkeletonCard, SkeletonChart } from '../components/LoadingSkeleton';
+import { Link } from 'react-router-dom';
 
 const Dashboard = () => {
     const { user } = useAuth();
-    const [portfolio, setPortfolio] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [stats, setStats] = useState({ totalValue: 0, profit: 0, profitPercent: 0 });
+    const { portfolio, stats, loading } = usePortfolio();
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    const fetchData = async () => {
-        try {
-            const res = await axios.get('http://localhost:5000/api/trades/portfolio');
-            const portfolioData = res.data;
-
-            // Calculate current value (in real app, fetch current prices for each)
-            let currentTotalValue = 0;
-            let totalInvested = 0;
-
-            const enrichedPortfolio = await Promise.all(portfolioData.map(async (item) => {
-                const quoteRes = await axios.get(`http://localhost:5000/api/stocks/quote/${item.stockSymbol}`);
-                const currentPrice = quoteRes.data.c;
-                const value = currentPrice * item.quantity;
-                const invested = item.averagePrice * item.quantity;
-                const profit = value - invested;
-
-                currentTotalValue += value;
-                totalInvested += invested;
-
-                return { ...item, currentPrice, value, profit };
-            }));
-
-            setPortfolio(enrichedPortfolio);
-            const profit = currentTotalValue - totalInvested;
-            const profitPercent = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
-
-            setStats({
-                totalValue: currentTotalValue + user.balance,
-                profit,
-                profitPercent
-            });
-            setLoading(false);
-        } catch (err) {
-            console.error(err);
-            setLoading(false);
-        }
+    const isMarketOpen = () => {
+        const now = new Date();
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+        const day = now.getDay();
+        const time = hours * 60 + minutes;
+        return day >= 1 && day <= 5 && time >= 555 && time <= 930;
     };
 
-    const StatCard = ({ title, value, subValue, icon: Icon, colorClass }) => (
-        <div className="bg-card p-6 rounded-2xl border border-border shadow-sm flex items-start justify-between">
+    const StatCard = ({ title, value, subValue, icon: Icon, colorClass, delay = 0 }) => (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: delay * 0.1, duration: 0.4 }}
+            className="glass-card p-6 flex items-start justify-between group hover:scale-[1.02] transition-transform duration-300"
+        >
             <div>
-                <p className="text-sm font-medium text-foreground/60 mb-1">{title}</p>
-                <h3 className="text-2xl font-bold">{value}</h3>
-                {subValue && <p className={`text-sm mt-1 font-medium ${colorClass}`}>{subValue}</p>}
+                <p className="text-xs font-medium text-foreground/40 mb-1 uppercase tracking-wider">{title}</p>
+                <h3 className="text-2xl font-black">{value}</h3>
+                {subValue && <p className={`text-sm mt-1 font-bold ${colorClass}`}>{subValue}</p>}
             </div>
-            <div className={`p-3 rounded-xl ${colorClass.replace('text-', 'bg-').replace('500', '500/10')}`}>
-                <Icon className={colorClass} size={24} />
+            <div className={`p-3 rounded-xl ${colorClass?.includes('green') || colorClass?.includes('emerald') ? 'bg-emerald-500/10' : colorClass?.includes('red') ? 'bg-red-500/10' : colorClass?.includes('purple') ? 'bg-purple-500/10' : 'bg-primary/10'}`}>
+                <Icon className={colorClass || 'text-primary'} size={22} />
             </div>
-        </div>
+        </motion.div>
     );
 
-    if (loading) return <div className="flex items-center justify-center min-h-[60vh]">Loading Dashboard...</div>;
+    if (loading) {
+        return (
+            <div className="max-w-7xl mx-auto space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2"><SkeletonChart /></div>
+                    <SkeletonCard />
+                </div>
+            </div>
+        );
+    }
+
+    // Chart data from portfolio
+    const performanceData = [
+        { date: 'Start', val: 1000000 },
+        { date: 'Invested', val: 1000000 - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.7 },
+        { date: 'Mid', val: 1000000 - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.85 },
+        { date: 'Recent', val: 1000000 - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.95 },
+        { date: 'Now', val: stats.totalValue || 1000000 }
+    ];
 
     return (
         <div className="max-w-7xl mx-auto space-y-8">
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold">Dashboard</h1>
-                    <p className="text-foreground/60">Welcome back, {user.name}</p>
+                    <h1 className="text-3xl font-black">Dashboard</h1>
+                    <p className="text-foreground/40">Welcome back, <span className="text-foreground font-medium">{user.name}</span></p>
                 </div>
-                <div className="bg-card px-4 py-2 rounded-xl border border-border flex items-center space-x-3">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                    <span className="text-sm font-medium">Market Open</span>
+                <div className={`flex items-center gap-2 glass-card px-4 py-2 rounded-xl ${isMarketOpen() ? 'border-emerald-500/20' : 'border-red-500/20'}`}>
+                    <div className={`w-2 h-2 rounded-full ${isMarketOpen() ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                    <span className={`text-sm font-medium ${isMarketOpen() ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {isMarketOpen() ? 'Market Open' : 'Market Closed'}
+                    </span>
                 </div>
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard
                     title="Total Portfolio Value"
-                    value={`₹${stats.totalValue.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
-                    subValue={stats.profit >= 0 ? `+₹${stats.profit.toLocaleString('en-IN', { maximumFractionDigits: 2 })} (${stats.profitPercent.toFixed(2)}%)` : `₹${stats.profit.toLocaleString('en-IN', { maximumFractionDigits: 2 })} (${stats.profitPercent.toFixed(2)}%)`}
+                    value={`₹${(stats.totalValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+                    subValue={stats.profit >= 0
+                        ? `+₹${stats.profit?.toLocaleString('en-IN', { maximumFractionDigits: 2 })} (${stats.profitPercent?.toFixed(2)}%)`
+                        : `₹${stats.profit?.toLocaleString('en-IN', { maximumFractionDigits: 2 })} (${stats.profitPercent?.toFixed(2)}%)`}
                     icon={BarChart3}
-                    colorClass={stats.profit >= 0 ? 'text-green-500' : 'text-red-500'}
+                    colorClass={stats.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}
+                    delay={0}
                 />
                 <StatCard
                     title="Cash Balance"
-                    value={`₹${user.balance.toLocaleString('en-IN')}`}
+                    value={`₹${(user.balance || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
                     icon={Wallet}
                     colorClass="text-primary"
+                    delay={1}
                 />
                 <StatCard
                     title="Total Positions"
                     value={portfolio.length}
+                    subValue={portfolio.length > 0 ? `${stats.dayChange >= 0 ? '+' : ''}₹${stats.dayChange?.toFixed(2)} today` : undefined}
                     icon={Briefcase}
-                    colorClass="text-purple-500"
+                    colorClass="text-purple-400"
+                    delay={2}
                 />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-card p-6 rounded-2xl border border-border">
-                    <h3 className="text-xl font-bold mb-6">Performance</h3>
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="lg:col-span-2 glass-card p-6"
+                >
+                    <h3 className="text-lg font-bold mb-6">Performance</h3>
                     <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={[
-                                { date: 'Mon', val: 1000000 },
-                                { date: 'Tue', val: 1020000 },
-                                { date: 'Wed', val: 1015000 },
-                                { date: 'Thu', val: 1050000 },
-                                { date: 'Fri', val: stats.totalValue }
-                            ]}>
+                            <AreaChart data={performanceData}>
                                 <defs>
                                     <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
                                         <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888822" />
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#88888815" />
                                 <XAxis dataKey="date" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                                <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val / 1000}k`} />
+                                <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`} />
                                 <Tooltip
-                                    contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff' }}
-                                    itemStyle={{ color: '#3b82f6' }}
+                                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
+                                    formatter={(val) => [`₹${val.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`, 'Value']}
                                 />
                                 <Area type="monotone" dataKey="val" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorVal)" />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
-                </div>
+                </motion.div>
 
-                <div className="bg-card p-6 rounded-2xl border border-border">
-                    <h3 className="text-xl font-bold mb-6">Positions</h3>
-                    <div className="space-y-4">
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 }}
+                    className="glass-card p-6"
+                >
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-lg font-bold">Top Positions</h3>
+                        <Link to="/positions" className="text-xs text-primary hover:text-primary/80 transition-colors">View all →</Link>
+                    </div>
+                    <div className="space-y-3">
                         {portfolio.length === 0 ? (
-                            <p className="text-center text-foreground/40 py-8">No active positions</p>
+                            <p className="text-center text-foreground/30 py-8">No active positions</p>
                         ) : (
-                            portfolio.map((item) => (
-                                <div key={item.stockSymbol} className="flex items-center justify-between p-3 rounded-xl hover:bg-background transition-colors">
-                                    <div>
-                                        <p className="font-bold text-lg">{item.stockSymbol}</p>
-                                        <p className="text-xs text-foreground/60">{item.quantity} Shares</p>
+                            portfolio.slice(0, 5).map((item) => (
+                                <div key={item.stockSymbol} className="flex items-center justify-between p-3 rounded-xl hover:bg-background/40 transition-all">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${item.profit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+                                            {item.profit >= 0 ? <TrendingUp size={16} className="text-emerald-400" /> : <TrendingDown size={16} className="text-red-400" />}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-sm">{item.stockSymbol.replace('.NS', '')}</p>
+                                            <p className="text-[10px] text-foreground/40">{item.quantity} Shares</p>
+                                        </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className="font-bold">₹{item.value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
-                                        <p className={`text-xs font-medium ${item.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                            {item.profit >= 0 ? '+' : ''}{item.profit.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                        <p className="font-bold text-sm">₹{item.value?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                                        <p className={`text-[10px] font-bold ${item.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {item.profit >= 0 ? '+' : ''}₹{item.profit?.toFixed(2)}
                                         </p>
                                     </div>
                                 </div>
                             ))
                         )}
                     </div>
-                </div>
+                </motion.div>
             </div>
         </div>
     );
