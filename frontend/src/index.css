@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --border: 214 32% 91%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 217 32% 17%;
+    --card-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --border: 217 32% 25%;
+  }
+}
+
+body {
+  @apply bg-background text-foreground transition-colors duration-300;
+  font-family: 'Inter', sans-serif;
+}
+
+.glass {
+  @apply bg-opacity-60 backdrop-blur-md border border-white/10;
+}
+
+.card-hover {
+  @apply transition-transform duration-200 hover:scale-[1.02] hover:shadow-lg;
+}
