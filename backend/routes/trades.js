@@ -4,10 +4,15 @@ const auth = require('../middleware/auth');
 const User = require('../models/User');
 const Trade = require('../models/Trade');
 const Portfolio = require('../models/Portfolio');
-const axios = require('axios');
 
-const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
-const API_KEY = process.env.FINNHUB_API_KEY;
+// yahoo-finance2 for reliable execution prices
+let yahooFinance;
+try {
+    const YahooFinance = require('yahoo-finance2').default;
+    yahooFinance = new YahooFinance();
+} catch (e) {
+    console.warn('yahoo-finance2 not installed correctly in trades route.');
+}
 
 const basePrices = {
     'RELIANCE.NS': 2950, 'TCS.NS': 4100, 'HDFCBANK.NS': 1600, 'ICICIBANK.NS': 1050,
@@ -33,12 +38,21 @@ const getISTTimestamp = () => {
 
 const getPrice = async (symbol) => {
     try {
-        if (!API_KEY || API_KEY === 'your_finnhub_api_key_here') return getMockPrice(symbol);
-        const res = await axios.get(`${FINNHUB_BASE_URL}/quote?symbol=${symbol}&token=${API_KEY}`);
-        if (res.data.c === 0) return getMockPrice(symbol);
-        return res.data.c;
+        if (!yahooFinance) return getMockPrice(symbol);
+
+        // Ensure symbol has .NS suffix for NSE
+        const ySymbol = symbol.endsWith('.NS') || symbol.endsWith('.BO') ? symbol : `${symbol}.NS`;
+        const quote = await yahooFinance.quote(ySymbol);
+
+        if (quote && quote.regularMarketPrice) {
+            console.log(`Execution price for ${ySymbol}: ₹${quote.regularMarketPrice}`);
+            return quote.regularMarketPrice;
+        }
+
+        console.warn(`Live price unavailable for ${symbol}, using mock.`);
+        return getMockPrice(symbol);
     } catch (err) {
-        console.warn(`Trade price API failure for ${symbol}, using mock.`);
+        console.warn(`Trade price API failure for ${symbol}, using mock:`, err.message);
         return getMockPrice(symbol);
     }
 };
@@ -52,32 +66,47 @@ const getMockPrice = (symbol) => {
 router.post('/buy', auth, async (req, res) => {
     try {
         const { symbol, quantity } = req.body;
+        console.log(`[TRADE] Buy request received: ${quantity} shares of ${symbol} for user ${req.user}`);
+
         const price = await getPrice(symbol);
-        const cost = price * quantity;
+        const cost = price * parseInt(quantity);
         const executedAt = getISTTimestamp();
+        console.log(`[TRADE] Price: ₹${price}, Total Cost: ₹${cost}`);
 
         const user = await User.findByPk(req.user);
-        if (user.balance < cost) return res.status(400).json({ message: 'Insufficient balance' });
+        if (!user) {
+            console.error(`[TRADE] User not found: ${req.user}`);
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (user.balance < cost) {
+            console.warn(`[TRADE] Insufficient balance: User has ₹${user.balance}, needs ₹${cost}`);
+            return res.status(400).json({ message: 'Insufficient balance' });
+        }
 
         user.balance -= cost;
         await user.save();
+        console.log(`[TRADE] Balance updated: New balance ₹${user.balance}`);
 
-        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity, price, type: 'BUY', executedAt });
+        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity: parseInt(quantity), price, type: 'BUY', executedAt });
+        console.log(`[TRADE] Trade record created`);
 
         let portfolio = await Portfolio.findOne({ where: { userId: user.id, stockSymbol: symbol } });
         if (portfolio) {
             const totalCost = (portfolio.quantity * portfolio.averagePrice) + cost;
-            portfolio.quantity += quantity;
+            portfolio.quantity += parseInt(quantity);
             portfolio.averagePrice = totalCost / portfolio.quantity;
             await portfolio.save();
+            console.log(`[TRADE] Portfolio updated (existing position)`);
         } else {
-            await Portfolio.create({ userId: user.id, stockSymbol: symbol, quantity, averagePrice: price, firstBuyDate: executedAt });
+            await Portfolio.create({ userId: user.id, stockSymbol: symbol, quantity: parseInt(quantity), averagePrice: price, firstBuyDate: executedAt });
+            console.log(`[TRADE] Portfolio created (new position)`);
         }
 
         res.json({ message: 'Purchase successful', balance: user.balance, executedAt });
     } catch (err) {
-        console.error('Trade error:', err.message);
-        res.status(500).json({ error: err.message });
+        console.error('[TRADE] Buy error:', err.message, err.stack);
+        res.status(500).json({ message: err.message, error: err.message });
     }
 });
 
@@ -87,21 +116,21 @@ router.post('/sell', auth, async (req, res) => {
         const { symbol, quantity } = req.body;
         const portfolio = await Portfolio.findOne({ where: { userId: req.user, stockSymbol: symbol } });
 
-        if (!portfolio || portfolio.quantity < quantity) {
+        if (!portfolio || portfolio.quantity < parseInt(quantity)) {
             return res.status(400).json({ message: 'Insufficient stock quantity' });
         }
 
         const price = await getPrice(symbol);
-        const revenue = price * quantity;
+        const revenue = price * parseInt(quantity);
         const executedAt = getISTTimestamp();
 
         const user = await User.findByPk(req.user);
         user.balance += revenue;
         await user.save();
 
-        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity, price, type: 'SELL', executedAt });
+        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity: parseInt(quantity), price, type: 'SELL', executedAt });
 
-        portfolio.quantity -= quantity;
+        portfolio.quantity -= parseInt(quantity);
         if (portfolio.quantity === 0) {
             await portfolio.destroy();
         } else {

@@ -17,7 +17,8 @@
     "mongoose": "^7.6.3",
     "mysql2": "^3.18.2",
     "sequelize": "^6.37.7",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "yahoo-finance2": "^3.13.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

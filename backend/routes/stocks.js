@@ -3,8 +3,16 @@ const router = express.Router();
 const axios = require('axios');
 const auth = require('../middleware/auth');
 
-const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
-const API_KEY = process.env.FINNHUB_API_KEY;
+// yahoo-finance2 for reliable NSE/BSE price data
+let yahooFinance;
+try {
+    const YahooFinance = require('yahoo-finance2').default;
+    yahooFinance = new YahooFinance();
+} catch (e) {
+    console.warn('yahoo-finance2 not installed correctly, will use mock data.');
+}
+
+const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY || '';
 
 // Expanded mock data with ~30 popular Indian stocks
 const indianStocksMock = [
@@ -50,7 +58,7 @@ const indianStocksMock = [
     { symbol: 'GRASIM.NS', description: 'GRASIM INDUSTRIES LTD', type: 'Common Stock' },
 ];
 
-// Base prices for mock data
+// Base prices for mock data fallback
 const basePrices = {
     'RELIANCE.NS': 2950, 'TCS.NS': 4100, 'HDFCBANK.NS': 1600, 'ICICIBANK.NS': 1050,
     'INFY.NS': 1650, 'BHARTIARTL.NS': 1180, 'SBI.NS': 750, 'LICI.NS': 920,
@@ -82,81 +90,106 @@ const getMockQuote = (symbol) => {
     };
 };
 
-// Search Stock
+// Get live quote using yahoo-finance2 package
+const getLiveQuote = async (symbol) => {
+    if (!yahooFinance) return null;
+    try {
+        // Ensure symbol has .NS suffix for NSE
+        const ySymbol = symbol.endsWith('.NS') || symbol.endsWith('.BO') ? symbol : `${symbol}.NS`;
+        const quote = await yahooFinance.quote(ySymbol);
+        if (!quote || !quote.regularMarketPrice) return null;
+
+        return {
+            c: quote.regularMarketPrice,
+            h: quote.regularMarketDayHigh || quote.regularMarketPrice,
+            l: quote.regularMarketDayLow || quote.regularMarketPrice,
+            o: quote.regularMarketOpen || quote.regularMarketPrice,
+            pc: quote.regularMarketPreviousClose || quote.regularMarketPrice,
+            d: quote.regularMarketChange || 0,
+            dp: quote.regularMarketChangePercent || 0,
+            t: Date.now(),
+            isMock: false
+        };
+    } catch (err) {
+        console.warn(`yahoo-finance2 error for ${symbol}:`, err.message);
+        return null;
+    }
+};
+
+// Search Stock — uses Twelve Data search if key available, else mock list
 router.get('/search', auth, async (req, res) => {
     try {
         const { q } = req.query;
         const query = q.toUpperCase();
 
-        if (!API_KEY || API_KEY === 'your_finnhub_api_key_here') {
-            const filtered = indianStocksMock.filter(s =>
-                s.symbol.toUpperCase().includes(query) || s.description.toUpperCase().includes(query)
-            );
-            // Enrich with mock prices for autocomplete
-            const enriched = filtered.map(s => {
-                const quote = getMockQuote(s.symbol);
-                return { ...s, price: quote.c, change: quote.d, changePercent: quote.dp };
-            });
-            return res.json({ result: enriched });
-        }
+        // Try Twelve Data search first (works on free plan for Indian stocks)
+        if (TWELVE_DATA_API_KEY) {
+            try {
+                const response = await axios.get(`https://api.twelvedata.com/symbol_search?symbol=${query}&apikey=${TWELVE_DATA_API_KEY}`);
+                if (response.data.status === 'ok' && response.data.data) {
+                    const results = response.data.data
+                        .filter(s => s.exchange === 'NSE' || s.exchange === 'BSE')
+                        .slice(0, 15)
+                        .map(s => ({
+                            symbol: `${s.symbol}.NS`,
+                            description: s.instrument_name || s.symbol,
+                            type: s.instrument_type || 'Common Stock',
+                            exchange: s.exchange
+                        }));
 
-        try {
-            const response = await axios.get(`${FINNHUB_BASE_URL}/search?q=${query}&token=${API_KEY}`);
-            let results = response.data.result || [];
-
-            const filteredResults = results.filter(s =>
-                s.symbol.endsWith('.NS') || s.symbol.endsWith('.BO')
-            );
-
-            if (filteredResults.length === 0) {
-                const matchingMocks = indianStocksMock.filter(s =>
-                    s.symbol.toUpperCase().includes(query) || s.description.toUpperCase().includes(query)
-                ).map(s => {
-                    const quote = getMockQuote(s.symbol);
-                    return { ...s, price: quote.c, change: quote.d, changePercent: quote.dp };
-                });
-                return res.json({ result: matchingMocks });
+                    if (results.length > 0) {
+                        // Enrich with live prices for top results
+                        const enriched = await Promise.all(results.slice(0, 5).map(async (s) => {
+                            const quote = await getLiveQuote(s.symbol);
+                            if (quote) {
+                                return { ...s, price: quote.c, change: quote.d, changePercent: quote.dp };
+                            }
+                            const mockQ = getMockQuote(s.symbol);
+                            return { ...s, price: mockQ.c, change: mockQ.d, changePercent: mockQ.dp };
+                        }));
+                        // Add remaining without price enrichment
+                        const rest = results.slice(5).map(s => {
+                            const mockQ = getMockQuote(s.symbol);
+                            return { ...s, price: mockQ.c, change: mockQ.d, changePercent: mockQ.dp };
+                        });
+                        return res.json({ result: [...enriched, ...rest] });
+                    }
+                }
+            } catch (searchErr) {
+                console.warn('Twelve Data search failed:', searchErr.message);
             }
-
-            res.json({ result: filteredResults });
-        } catch (apiErr) {
-            console.warn('Search API failed, falling back to mock:', apiErr.message);
-            const matchingMocks = indianStocksMock.filter(s =>
-                s.symbol.toUpperCase().includes(query) || s.description.toUpperCase().includes(query)
-            ).map(s => {
-                const quote = getMockQuote(s.symbol);
-                return { ...s, price: quote.c, change: quote.d, changePercent: quote.dp };
-            });
-            res.json({ result: matchingMocks });
         }
+
+        // Fallback: filter mock list
+        const filtered = indianStocksMock.filter(s =>
+            s.symbol.toUpperCase().includes(query) || s.description.toUpperCase().includes(query)
+        );
+        const enriched = await Promise.all(filtered.map(async (s) => {
+            const quote = await getLiveQuote(s.symbol);
+            if (quote) {
+                return { ...s, price: quote.c, change: quote.d, changePercent: quote.dp };
+            }
+            const mockQ = getMockQuote(s.symbol);
+            return { ...s, price: mockQ.c, change: mockQ.d, changePercent: mockQ.dp };
+        }));
+        return res.json({ result: enriched });
     } catch (err) {
         console.error('Search error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Get Quote
+// Get Quote — yahoo-finance2 with mock fallback
 router.get('/quote/:symbol', auth, async (req, res) => {
     const { symbol } = req.params;
     try {
-        if (!API_KEY || API_KEY === 'your_finnhub_api_key_here') {
-            return res.json(getMockQuote(symbol));
+        const liveQuote = await getLiveQuote(symbol);
+        if (liveQuote) {
+            console.log(`Live quote for ${symbol}: ₹${liveQuote.c} (${liveQuote.dp > 0 ? '+' : ''}${liveQuote.dp.toFixed(2)}%)`);
+            return res.json(liveQuote);
         }
-
-        try {
-            const response = await axios.get(`${FINNHUB_BASE_URL}/quote?symbol=${symbol}&token=${API_KEY}`);
-            if (response.data.c === 0) {
-                console.warn(`Price unavailable for ${symbol} via API, using mock.`);
-                return res.json(getMockQuote(symbol));
-            }
-            res.json(response.data);
-        } catch (apiErr) {
-            if (apiErr.response && (apiErr.response.status === 403 || apiErr.response.status === 429)) {
-                console.warn(`API ${apiErr.response.status} error for ${symbol}, using mock.`);
-                return res.json(getMockQuote(symbol));
-            }
-            throw apiErr;
-        }
+        console.warn(`Live quote unavailable for ${symbol}, using mock.`);
+        res.json(getMockQuote(symbol));
     } catch (err) {
         console.error('Quote error:', err.message);
         res.json(getMockQuote(symbol));
