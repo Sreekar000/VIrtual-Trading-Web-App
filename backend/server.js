@@ -1,5 +1,4 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
 
@@ -14,15 +13,15 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/stocks', require('./routes/stocks'));
 app.use('/api/trades', require('./routes/trades'));
 app.use('/api/leaderboard', require('./routes/leaderboard'));
+app.use('/api/watchlists', require('./routes/watchlists'));
 
-// Placeholder for other routes
 app.get('/', (req, res) => res.send('VirtualTrade Pro API Running'));
 
 const PORT = process.env.PORT || 5000;
 
-sequelize.sync()
+sequelize.sync({ alter: true })
     .then(() => {
-        console.log('Database Connected');
+        console.log('Database Connected & Synced');
         app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
     })
     .catch(err => console.log(err));

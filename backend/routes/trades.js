@@ -23,6 +23,14 @@ const basePrices = {
     'HINDALCO.NS': 580, 'GRASIM.NS': 2350
 };
 
+const getISTTimestamp = () => {
+    const now = new Date();
+    const offset = 5.5 * 60 * 60 * 1000;
+    const ist = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + offset);
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${ist.getFullYear()}-${pad(ist.getMonth() + 1)}-${pad(ist.getDate())}T${pad(ist.getHours())}:${pad(ist.getMinutes())}:${pad(ist.getSeconds())}+05:30`;
+};
+
 const getPrice = async (symbol) => {
     try {
         if (!API_KEY || API_KEY === 'your_finnhub_api_key_here') return getMockPrice(symbol);
@@ -46,6 +54,7 @@ router.post('/buy', auth, async (req, res) => {
         const { symbol, quantity } = req.body;
         const price = await getPrice(symbol);
         const cost = price * quantity;
+        const executedAt = getISTTimestamp();
 
         const user = await User.findByPk(req.user);
         if (user.balance < cost) return res.status(400).json({ message: 'Insufficient balance' });
@@ -53,7 +62,7 @@ router.post('/buy', auth, async (req, res) => {
         user.balance -= cost;
         await user.save();
 
-        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity, price, type: 'BUY' });
+        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity, price, type: 'BUY', executedAt });
 
         let portfolio = await Portfolio.findOne({ where: { userId: user.id, stockSymbol: symbol } });
         if (portfolio) {
@@ -62,10 +71,10 @@ router.post('/buy', auth, async (req, res) => {
             portfolio.averagePrice = totalCost / portfolio.quantity;
             await portfolio.save();
         } else {
-            await Portfolio.create({ userId: user.id, stockSymbol: symbol, quantity, averagePrice: price });
+            await Portfolio.create({ userId: user.id, stockSymbol: symbol, quantity, averagePrice: price, firstBuyDate: executedAt });
         }
 
-        res.json({ message: 'Purchase successful', balance: user.balance });
+        res.json({ message: 'Purchase successful', balance: user.balance, executedAt });
     } catch (err) {
         console.error('Trade error:', err.message);
         res.status(500).json({ error: err.message });
@@ -84,12 +93,13 @@ router.post('/sell', auth, async (req, res) => {
 
         const price = await getPrice(symbol);
         const revenue = price * quantity;
+        const executedAt = getISTTimestamp();
 
         const user = await User.findByPk(req.user);
         user.balance += revenue;
         await user.save();
 
-        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity, price, type: 'SELL' });
+        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity, price, type: 'SELL', executedAt });
 
         portfolio.quantity -= quantity;
         if (portfolio.quantity === 0) {
@@ -98,7 +108,7 @@ router.post('/sell', auth, async (req, res) => {
             await portfolio.save();
         }
 
-        res.json({ message: 'Sale successful', balance: user.balance });
+        res.json({ message: 'Sale successful', balance: user.balance, executedAt });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -137,18 +147,11 @@ router.get('/stats', auth, async (req, res) => {
 
         if (trades.length === 0) {
             return res.json({
-                totalTrades: 0,
-                realizedPnl: 0,
-                winRate: 0,
-                avgGain: 0,
-                avgLoss: 0,
-                bestTrade: null,
-                worstTrade: null,
-                totalBrokerage: 0
+                totalTrades: 0, realizedPnl: 0, winRate: 0,
+                avgGain: 0, avgLoss: 0, bestTrade: null, worstTrade: null, totalBrokerage: 0
             });
         }
 
-        // Track positions to compute realized P&L
         const positions = {};
         let realizedPnl = 0;
         const completedTrades = [];
@@ -165,10 +168,9 @@ router.get('/stats', auth, async (req, res) => {
                 const profit = (trade.price - positions[sym].avgPrice) * trade.quantity;
                 realizedPnl += profit;
                 completedTrades.push({
-                    symbol: sym,
-                    profit,
+                    symbol: sym, profit,
                     profitPercent: positions[sym].avgPrice > 0 ? (profit / (positions[sym].avgPrice * trade.quantity)) * 100 : 0,
-                    date: trade.createdAt
+                    date: trade.executedAt || trade.createdAt
                 });
                 positions[sym].qty -= trade.quantity;
             }
@@ -176,27 +178,17 @@ router.get('/stats', auth, async (req, res) => {
 
         const wins = completedTrades.filter(t => t.profit > 0);
         const losses = completedTrades.filter(t => t.profit < 0);
-
         const winRate = completedTrades.length > 0 ? (wins.length / completedTrades.length) * 100 : 0;
         const avgGain = wins.length > 0 ? wins.reduce((s, t) => s + t.profit, 0) / wins.length : 0;
         const avgLoss = losses.length > 0 ? losses.reduce((s, t) => s + t.profit, 0) / losses.length : 0;
-
         const sortedByProfit = [...completedTrades].sort((a, b) => b.profit - a.profit);
         const bestTrade = sortedByProfit.length > 0 ? sortedByProfit[0] : null;
         const worstTrade = sortedByProfit.length > 0 ? sortedByProfit[sortedByProfit.length - 1] : null;
-
-        // Simulated brokerage (0.03% per trade)
         const totalBrokerage = trades.reduce((sum, t) => sum + (t.price * t.quantity * 0.0003), 0);
-
-        // Risk-reward ratio
         const riskRewardRatio = avgLoss !== 0 ? Math.abs(avgGain / avgLoss) : 0;
-
-        // Basic Sharpe ratio approximation
         const returns = completedTrades.map(t => t.profitPercent);
         const avgReturn = returns.length > 0 ? returns.reduce((s, r) => s + r, 0) / returns.length : 0;
-        const stdDev = returns.length > 1
-            ? Math.sqrt(returns.reduce((s, r) => s + Math.pow(r - avgReturn, 2), 0) / (returns.length - 1))
-            : 0;
+        const stdDev = returns.length > 1 ? Math.sqrt(returns.reduce((s, r) => s + Math.pow(r - avgReturn, 2), 0) / (returns.length - 1)) : 0;
         const sharpeRatio = stdDev > 0 ? (avgReturn / stdDev) : 0;
 
         res.json({
@@ -205,15 +197,12 @@ router.get('/stats', auth, async (req, res) => {
             winRate: parseFloat(winRate.toFixed(2)),
             avgGain: parseFloat(avgGain.toFixed(2)),
             avgLoss: parseFloat(avgLoss.toFixed(2)),
-            bestTrade,
-            worstTrade,
+            bestTrade, worstTrade,
             totalBrokerage: parseFloat(totalBrokerage.toFixed(2)),
             riskRewardRatio: parseFloat(riskRewardRatio.toFixed(2)),
             sharpeRatio: parseFloat(sharpeRatio.toFixed(2)),
             completedTrades: completedTrades.map(t => ({
-                ...t,
-                profit: parseFloat(t.profit.toFixed(2)),
-                profitPercent: parseFloat(t.profitPercent.toFixed(2))
+                ...t, profit: parseFloat(t.profit.toFixed(2)), profitPercent: parseFloat(t.profitPercent.toFixed(2))
             }))
         });
     } catch (err) {
