@@ -19,7 +19,7 @@ app.get('/', (req, res) => res.send('VirtualTrade Pro API Running'));
 
 const PORT = process.env.PORT || 5000;
 
-sequelize.sync({ alter: true })
+sequelize.sync()
     .then(() => {
         console.log('Database Connected & Synced');
         app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -4,13 +4,8 @@ const axios = require('axios');
 const auth = require('../middleware/auth');
 
 // yahoo-finance2 for reliable NSE/BSE price data
-let yahooFinance;
-try {
-    const YahooFinance = require('yahoo-finance2').default;
-    yahooFinance = new YahooFinance();
-} catch (e) {
-    console.warn('yahoo-finance2 not installed correctly, will use mock data.');
-}
+const YahooFinance = require('yahoo-finance2').default;
+const yahooFinance = new YahooFinance();
 
 const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY || '';
 
@@ -193,6 +188,33 @@ router.get('/quote/:symbol', auth, async (req, res) => {
     } catch (err) {
         console.error('Quote error:', err.message);
         res.json(getMockQuote(symbol));
+    }
+});
+
+// Get Batch Quotes — Fetch multiple symbols at once
+router.post('/quotes', auth, async (req, res) => {
+    const { symbols } = req.body;
+    if (!symbols || !Array.isArray(symbols)) {
+        return res.status(400).json({ message: 'Symbols array required' });
+    }
+
+    try {
+        const quotes = await Promise.all(symbols.map(async (symbol) => {
+            const live = await getLiveQuote(symbol);
+            if (live) return { symbol, ...live };
+            return { symbol, ...getMockQuote(symbol) };
+        }));
+
+        const response = {};
+        quotes.forEach(q => {
+            const { symbol, ...data } = q;
+            response[symbol] = data;
+        });
+
+        res.json(response);
+    } catch (err) {
+        console.error('Batch quote error:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 

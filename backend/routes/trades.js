@@ -4,15 +4,11 @@ const auth = require('../middleware/auth');
 const User = require('../models/User');
 const Trade = require('../models/Trade');
 const Portfolio = require('../models/Portfolio');
+const sequelize = require('../config/database');
 
 // yahoo-finance2 for reliable execution prices
-let yahooFinance;
-try {
-    const YahooFinance = require('yahoo-finance2').default;
-    yahooFinance = new YahooFinance();
-} catch (e) {
-    console.warn('yahoo-finance2 not installed correctly in trades route.');
-}
+const YahooFinance = require('yahoo-finance2').default;
+const yahooFinance = new YahooFinance();
 
 const basePrices = {
     'RELIANCE.NS': 2950, 'TCS.NS': 4100, 'HDFCBANK.NS': 1600, 'ICICIBANK.NS': 1050,
@@ -64,82 +60,99 @@ const getMockPrice = (symbol) => {
 
 // Buy Stock
 router.post('/buy', auth, async (req, res) => {
+    const t = await sequelize.transaction();
     try {
         const { symbol, quantity } = req.body;
-        console.log(`[TRADE] Buy request received: ${quantity} shares of ${symbol} for user ${req.user}`);
+        const qty = parseInt(quantity);
+        console.log(`[TRADE] Buy request received: ${qty} shares of ${symbol} for user ${req.user}`);
 
         const price = await getPrice(symbol);
-        const cost = price * parseInt(quantity);
+        const cost = price * qty;
         const executedAt = getISTTimestamp();
         console.log(`[TRADE] Price: ₹${price}, Total Cost: ₹${cost}`);
 
-        const user = await User.findByPk(req.user);
+        const user = await User.findByPk(req.user, { transaction: t });
         if (!user) {
+            await t.rollback();
             console.error(`[TRADE] User not found: ${req.user}`);
             return res.status(404).json({ message: 'User not found' });
         }
 
         if (user.balance < cost) {
+            await t.rollback();
             console.warn(`[TRADE] Insufficient balance: User has ₹${user.balance}, needs ₹${cost}`);
             return res.status(400).json({ message: 'Insufficient balance' });
         }
 
+        // All DB operations within the same transaction
         user.balance -= cost;
-        await user.save();
+        await user.save({ transaction: t });
         console.log(`[TRADE] Balance updated: New balance ₹${user.balance}`);
 
-        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity: parseInt(quantity), price, type: 'BUY', executedAt });
+        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity: qty, price, type: 'BUY', executedAt }, { transaction: t });
         console.log(`[TRADE] Trade record created`);
 
-        let portfolio = await Portfolio.findOne({ where: { userId: user.id, stockSymbol: symbol } });
+        let portfolio = await Portfolio.findOne({ where: { userId: user.id, stockSymbol: symbol }, transaction: t });
         if (portfolio) {
             const totalCost = (portfolio.quantity * portfolio.averagePrice) + cost;
-            portfolio.quantity += parseInt(quantity);
+            portfolio.quantity += qty;
             portfolio.averagePrice = totalCost / portfolio.quantity;
-            await portfolio.save();
+            await portfolio.save({ transaction: t });
             console.log(`[TRADE] Portfolio updated (existing position)`);
         } else {
-            await Portfolio.create({ userId: user.id, stockSymbol: symbol, quantity: parseInt(quantity), averagePrice: price, firstBuyDate: executedAt });
+            await Portfolio.create({ userId: user.id, stockSymbol: symbol, quantity: qty, averagePrice: price, firstBuyDate: executedAt }, { transaction: t });
             console.log(`[TRADE] Portfolio created (new position)`);
         }
 
+        // Commit only after ALL operations succeed
+        await t.commit();
+        console.log(`[TRADE] Transaction committed successfully`);
+
         res.json({ message: 'Purchase successful', balance: user.balance, executedAt });
     } catch (err) {
-        console.error('[TRADE] Buy error:', err.message, err.stack);
-        res.status(500).json({ message: err.message, error: err.message });
+        await t.rollback();
+        console.error('[TRADE] Buy error (rolled back):', err.message, err.stack);
+        res.status(500).json({ message: 'Trade failed: ' + err.message, error: err.message });
     }
 });
 
 // Sell Stock
 router.post('/sell', auth, async (req, res) => {
+    const t = await sequelize.transaction();
     try {
         const { symbol, quantity } = req.body;
-        const portfolio = await Portfolio.findOne({ where: { userId: req.user, stockSymbol: symbol } });
+        const qty = parseInt(quantity);
 
-        if (!portfolio || portfolio.quantity < parseInt(quantity)) {
+        const portfolio = await Portfolio.findOne({ where: { userId: req.user, stockSymbol: symbol }, transaction: t });
+
+        if (!portfolio || portfolio.quantity < qty) {
+            await t.rollback();
             return res.status(400).json({ message: 'Insufficient stock quantity' });
         }
 
         const price = await getPrice(symbol);
-        const revenue = price * parseInt(quantity);
+        const revenue = price * qty;
         const executedAt = getISTTimestamp();
 
-        const user = await User.findByPk(req.user);
+        const user = await User.findByPk(req.user, { transaction: t });
         user.balance += revenue;
-        await user.save();
+        await user.save({ transaction: t });
 
-        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity: parseInt(quantity), price, type: 'SELL', executedAt });
+        await Trade.create({ userId: user.id, stockSymbol: symbol, quantity: qty, price, type: 'SELL', executedAt }, { transaction: t });
 
-        portfolio.quantity -= parseInt(quantity);
+        portfolio.quantity -= qty;
         if (portfolio.quantity === 0) {
-            await portfolio.destroy();
+            await portfolio.destroy({ transaction: t });
         } else {
-            await portfolio.save();
+            await portfolio.save({ transaction: t });
         }
 
+        await t.commit();
         res.json({ message: 'Sale successful', balance: user.balance, executedAt });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        await t.rollback();
+        console.error('[TRADE] Sell error (rolled back):', err.message, err.stack);
+        res.status(500).json({ message: 'Trade failed: ' + err.message, error: err.message });
     }
 });
 
