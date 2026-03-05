@@ -3,6 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PortfolioProvider } from './context/PortfolioContext';
 import { TradeProvider } from './context/TradeContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { WatchlistProvider } from './context/WatchlistContext';
+import { MarketDataProvider } from './context/MarketDataContext';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import Stocks from './pages/Stocks';
@@ -26,9 +29,8 @@ const PrivateRoute = ({ children }) => {
 };
 
 const AppContent = () => {
-    const { user } = useAuth();
     return (
-        <div className="min-h-screen bg-background flex flex-col md:flex-row">
+        <div className="min-h-screen bg-background flex flex-col md:flex-row transition-colors duration-300">
             <Navbar />
             <main className="flex-1 p-4 md:p-8 overflow-y-auto">
                 <Routes>
@@ -47,15 +49,21 @@ const AppContent = () => {
 
 function App() {
     return (
-        <AuthProvider>
-            <PortfolioProvider>
-                <TradeProvider>
-                    <Router>
-                        <AppContent />
-                    </Router>
-                </TradeProvider>
-            </PortfolioProvider>
-        </AuthProvider>
+        <ThemeProvider>
+            <AuthProvider>
+                <MarketDataProvider>
+                    <WatchlistProvider>
+                        <PortfolioProvider>
+                            <TradeProvider>
+                                <Router>
+                                    <AppContent />
+                                </Router>
+                            </TradeProvider>
+                        </PortfolioProvider>
+                    </WatchlistProvider>
+                </MarketDataProvider>
+            </AuthProvider>
+        </ThemeProvider>
     );
 }
 

@@ -51,6 +51,39 @@ const Positions = () => {
         return `₹${parseFloat(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
+    const parseDateStr = (dateStr) => {
+        if (!dateStr) return null;
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) return d;
+        // Fallback manual parse for IST format
+        try {
+            const match = dateStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+            if (match) {
+                const [, y, mo, da, h, mi, s] = match;
+                return new Date(`${y}-${mo}-${da}T${h}:${mi}:${s}+05:30`);
+            }
+        } catch { }
+        return null;
+    };
+
+    const formatBuyDate = (dateStr) => {
+        const d = parseDateStr(dateStr);
+        if (!d) return '—';
+        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+
+    const getHoldingDuration = (dateStr) => {
+        const buyDate = parseDateStr(dateStr);
+        if (!buyDate) return '—';
+        const now = new Date();
+        const diffMs = now - buyDate;
+        if (diffMs < 0) return '0h';
+        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        if (days === 0) return `${hours}h`;
+        return `${days}d ${hours}h`;
+    };
+
     const StatBox = ({ label, value, subtext, icon: Icon, color = 'text-primary' }) => (
         <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -137,12 +170,14 @@ const Positions = () => {
                                 <th className="p-3 font-bold text-foreground/60">CMP</th>
                                 <th className="p-3 font-bold text-foreground/60">Current Value</th>
                                 <th className="p-3 font-bold text-foreground/60">P&L</th>
+                                <th className="p-3 font-bold text-foreground/60">Buy Date</th>
+                                <th className="p-3 font-bold text-foreground/60">Holding</th>
                                 <th className="p-3 font-bold text-foreground/60 text-right">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/20">
                             {portfolio.length === 0 ? (
-                                <tr><td colSpan="7" className="p-8 text-center text-foreground/30">No open positions</td></tr>
+                                <tr><td colSpan="9" className="p-8 text-center text-foreground/30">No open positions</td></tr>
                             ) : (
                                 portfolio.map((item) => (
                                     <motion.tr
@@ -162,6 +197,8 @@ const Positions = () => {
                                                 <span className="text-xs ml-1">({item.profitPercent >= 0 ? '+' : ''}{item.profitPercent?.toFixed(1)}%)</span>
                                             </div>
                                         </td>
+                                        <td className="p-3 text-foreground/50 text-xs">{formatBuyDate(item.firstBuyDate)}</td>
+                                        <td className="p-3 text-foreground/50 text-xs font-medium">{getHoldingDuration(item.firstBuyDate)}</td>
                                         <td className="p-3 text-right">
                                             <button
                                                 onClick={() => setSellTarget(item)}

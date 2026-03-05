@@ -59,12 +59,16 @@ const PositionsPanel = () => {
                                         <TrendingDown size={12} className="text-red-400 flex-shrink-0" />
                                     )}
                                 </div>
-                                <p className="text-[10px] text-foreground/40">{item.quantity} × ₹{item.currentPrice?.toFixed(2)}</p>
+                                <div className="flex items-center gap-1.5 text-[10px] text-foreground/40">
+                                    <span>{item.quantity} shares</span>
+                                    <span className="opacity-30">•</span>
+                                    <span>₹{item.averagePrice?.toFixed(2)} avg</span>
+                                </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="text-right">
                                     <p className={`text-xs font-bold transition-colors duration-500 ${isProfitable ? 'text-emerald-400' : 'text-red-400'}`}>
-                                        {isProfitable ? '+' : ''}₹{item.profit?.toFixed(0)}
+                                        {isProfitable ? '+' : ''}₹{item.profit?.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                                     </p>
                                     <p className={`text-[10px] ${isProfitable ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
                                         {isProfitable ? '+' : ''}{item.profitPercent?.toFixed(1)}%
