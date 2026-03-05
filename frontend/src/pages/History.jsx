@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { History as HistoryIcon, ArrowUpRight, ArrowDownRight, ArrowUpDown, Calendar, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import API_BASE_URL from '../config';
 import { SkeletonTable } from '../components/LoadingSkeleton';
 
 const History = () => {
@@ -19,7 +20,7 @@ const History = () => {
 
     const fetchHistory = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/trades/history');
+            const res = await axios.get(`${API_BASE_URL}/trades/history`);
             setTrades(res.data);
             setLoading(false);
         } catch (err) {

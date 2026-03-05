@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from './AuthContext';
 import { usePortfolio } from './PortfolioContext';
+import API_BASE_URL from '../config';
 
 const TradeContext = createContext();
 
@@ -15,7 +16,7 @@ export const TradeProvider = ({ children }) => {
 
     const executeTrade = useCallback(async (type, symbol, quantity) => {
         try {
-            const res = await axios.post(`http://localhost:5000/api/trades/${type.toLowerCase()}`, {
+            const res = await axios.post(`${API_BASE_URL}/trades/${type.toLowerCase()}`, {
                 symbol,
                 quantity: Number(quantity)
             });
@@ -32,7 +33,7 @@ export const TradeProvider = ({ children }) => {
     const fetchHistory = useCallback(async () => {
         setHistoryLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/trades/history');
+            const res = await axios.get(`${API_BASE_URL}/trades/history`);
             setTradeHistory(res.data);
         } catch (err) {
             console.error('History fetch error:', err);

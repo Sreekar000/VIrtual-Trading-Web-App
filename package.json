@@ -1,0 +1,14 @@
+{
+    "name": "virtualtrade-pro-root",
+    "version": "1.0.0",
+    "description": "Root orchestration for VirtualTrade Pro",
+    "scripts": {
+        "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+        "build:frontend": "cd frontend && npm run build",
+        "start": "cd backend && node server.js",
+        "render-build": "npm install && cd frontend && npm install && npm run build && cd ../backend && npm install --production"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC"
+}

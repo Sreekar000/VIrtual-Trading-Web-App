@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import API_BASE_URL from '../config';
 
 const AuthContext = createContext();
 
@@ -25,7 +26,7 @@ export const AuthProvider = ({ children }) => {
         const token = localStorage.getItem('token');
         if (token) {
             axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            axios.get('http://localhost:5000/api/auth/me')
+            axios.get(`${API_BASE_URL}/auth/me`)
                 .then(res => setUser(res.data))
                 .catch(() => logout())
                 .finally(() => setLoading(false));

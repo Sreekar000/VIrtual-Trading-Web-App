@@ -8,6 +8,7 @@ import { useWatchlist } from '../context/WatchlistContext';
 import { useMarketData } from '../context/MarketDataContext';
 import { SkeletonCard } from '../components/LoadingSkeleton';
 import WatchlistPanel from '../components/WatchlistPanel';
+import API_BASE_URL from '../config';
 
 const Stocks = () => {
     const { user, setUser } = useAuth();
@@ -59,7 +60,7 @@ const Stocks = () => {
         setSearchLoading(true);
         debounceRef.current = setTimeout(async () => {
             try {
-                const res = await axios.get(`http://localhost:5000/api/stocks/search?q=${query}`);
+                const res = await axios.get(`${API_BASE_URL}/stocks/search?q=${query}`);
                 setSuggestions(res.data.result || []);
                 setShowSuggestions(true);
                 setHighlightIndex(-1);
@@ -88,7 +89,7 @@ const Stocks = () => {
     const selectStock = async (symbol) => {
         setSearch(symbol); setShowSuggestions(false); setQuoteLoading(true);
         try {
-            const res = await axios.get(`http://localhost:5000/api/stocks/quote/${symbol}`);
+            const res = await axios.get(`${API_BASE_URL}/stocks/quote/${symbol}`);
             setLocalQuote(res.data); setSelectedStock(symbol); setMessage({ text: '', type: '' });
         } catch (err) { console.error(err); }
         finally { setQuoteLoading(false); }

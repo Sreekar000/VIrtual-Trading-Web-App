@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import axios from 'axios';
 import { useAuth } from './AuthContext';
 import { useMarketData } from './MarketDataContext';
+import API_BASE_URL from '../config';
 
 const PortfolioContext = createContext();
 
@@ -26,7 +27,7 @@ export const PortfolioProvider = ({ children }) => {
         if (!user) return;
         if (!silent) setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/trades/portfolio');
+            const res = await axios.get(`${API_BASE_URL}/trades/portfolio`);
             setPortfolioItems(res.data);
         } catch (err) {
             console.error('Portfolio fetch error:', err);
@@ -113,7 +114,7 @@ export const PortfolioProvider = ({ children }) => {
     const fetchLifetimeStats = useCallback(async () => {
         if (!user) return;
         try {
-            const res = await axios.get('http://localhost:5000/api/trades/stats');
+            const res = await axios.get(`${API_BASE_URL}/trades/stats`);
             setLifetimeStats(res.data);
         } catch (err) {
             console.error('Stats fetch error:', err);
@@ -122,7 +123,7 @@ export const PortfolioProvider = ({ children }) => {
 
     const sellStock = async (symbol, quantity) => {
         try {
-            const res = await axios.post('http://localhost:5000/api/trades/sell', { symbol, quantity: Number(quantity) });
+            const res = await axios.post(`${API_BASE_URL}/trades/sell`, { symbol, quantity: Number(quantity) });
             if (user) setUser({ ...user, balance: res.data.balance });
             await fetchPortfolio(true);
             await fetchLifetimeStats();

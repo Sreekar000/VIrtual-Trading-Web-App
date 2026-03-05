@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import axios from 'axios';
 import { useAuth } from './AuthContext';
 import { useMarketData } from './MarketDataContext';
+import API_BASE_URL from '../config';
 
 const WatchlistContext = createContext();
 
@@ -17,7 +18,7 @@ export const WatchlistProvider = ({ children }) => {
     const fetchWatchlists = useCallback(async () => {
         if (!user) return;
         try {
-            const res = await axios.get('http://localhost:5000/api/watchlists');
+            const res = await axios.get(`${API_BASE_URL}/watchlists`);
             setWatchlists(res.data);
             if (!activeWatchlistId && res.data.length > 0) {
                 setActiveWatchlistId(res.data[0].id);
@@ -44,7 +45,7 @@ export const WatchlistProvider = ({ children }) => {
 
     const createWatchlist = async (name) => {
         try {
-            const res = await axios.post('http://localhost:5000/api/watchlists', { name });
+            const res = await axios.post(`${API_BASE_URL}/watchlists`, { name });
             setWatchlists(prev => [...prev, res.data]);
             return res.data;
         } catch (err) {
@@ -54,14 +55,14 @@ export const WatchlistProvider = ({ children }) => {
 
     const renameWatchlist = async (id, name) => {
         try {
-            await axios.put(`http://localhost:5000/api/watchlists/${id}`, { name });
+            await axios.put(`${API_BASE_URL}/watchlists/${id}`, { name });
             setWatchlists(prev => prev.map(w => w.id === id ? { ...w, name } : w));
         } catch { /* skip */ }
     };
 
     const deleteWatchlist = async (id) => {
         try {
-            await axios.delete(`http://localhost:5000/api/watchlists/${id}`);
+            await axios.delete(`${API_BASE_URL}/watchlists/${id}`);
             setWatchlists(prev => prev.filter(w => w.id !== id));
             if (activeWatchlistId === id) {
                 const remaining = watchlists.filter(w => w.id !== id);
@@ -72,7 +73,7 @@ export const WatchlistProvider = ({ children }) => {
 
     const addToWatchlist = async (watchlistId, stockSymbol, companyName) => {
         try {
-            const res = await axios.post(`http://localhost:5000/api/watchlists/${watchlistId}/items`, { stockSymbol, companyName });
+            const res = await axios.post(`${API_BASE_URL}/watchlists/${watchlistId}/items`, { stockSymbol, companyName });
             setWatchlists(prev => prev.map(w => w.id === watchlistId
                 ? { ...w, WatchlistItems: [...(w.WatchlistItems || []), res.data] }
                 : w
@@ -85,7 +86,7 @@ export const WatchlistProvider = ({ children }) => {
 
     const removeFromWatchlist = async (watchlistId, itemId) => {
         try {
-            await axios.delete(`http://localhost:5000/api/watchlists/${watchlistId}/items/${itemId}`);
+            await axios.delete(`${API_BASE_URL}/watchlists/${watchlistId}/items/${itemId}`);
             setWatchlists(prev => prev.map(w => w.id === watchlistId
                 ? { ...w, WatchlistItems: (w.WatchlistItems || []).filter(i => i.id !== itemId) }
                 : w

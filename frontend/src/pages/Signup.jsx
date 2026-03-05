@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { TrendingUp, User, Mail, Lock } from 'lucide-react';
+import API_BASE_URL from '../config';
 
 const Signup = () => {
     const [formData, setFormData] = useState({ name: '', email: '', password: '' });
@@ -13,7 +14,7 @@ const Signup = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const res = await axios.post('http://localhost:5000/api/auth/signup', formData);
+            const res = await axios.post(`${API_BASE_URL}/auth/signup`, formData);
             login(res.data.token, res.data.user);
             navigate('/');
         } catch (err) {
