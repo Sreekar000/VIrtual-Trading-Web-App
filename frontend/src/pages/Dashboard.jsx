@@ -53,12 +53,13 @@ const Dashboard = () => {
     }
 
     // Chart data from portfolio
+    const INITIAL_CAPITAL = 1000000;
     const performanceData = [
-        { date: 'Start', val: 1000000 },
-        { date: 'Invested', val: 1000000 - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.7 },
-        { date: 'Mid', val: 1000000 - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.85 },
-        { date: 'Recent', val: 1000000 - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.95 },
-        { date: 'Now', val: stats.totalValue || 1000000 }
+        { date: 'Start', val: INITIAL_CAPITAL },
+        { date: 'Invested', val: INITIAL_CAPITAL - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.7 },
+        { date: 'Mid', val: INITIAL_CAPITAL - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.85 },
+        { date: 'Recent', val: INITIAL_CAPITAL - (stats.totalInvested || 0) + (stats.currentValue || 0) * 0.95 },
+        { date: 'Now', val: stats.totalValue || INITIAL_CAPITAL }
     ];
 
     return (
