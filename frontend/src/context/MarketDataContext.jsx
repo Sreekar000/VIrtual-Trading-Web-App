@@ -67,7 +67,7 @@ export const MarketDataProvider = ({ children }) => {
     useEffect(() => {
         if (user) {
             fetchBatchPrices();
-            intervalRef.current = setInterval(fetchBatchPrices, 8000);
+            intervalRef.current = setInterval(fetchBatchPrices, 5000);
         }
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);

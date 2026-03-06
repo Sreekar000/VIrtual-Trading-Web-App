@@ -41,8 +41,14 @@ const getPrice = async (symbol) => {
         const quote = await yahooFinance.quote(ySymbol);
 
         if (quote && quote.regularMarketPrice) {
-            console.log(`Execution price for ${ySymbol}: ₹${quote.regularMarketPrice}`);
-            return quote.regularMarketPrice;
+            const price = quote.regularMarketPrice;
+            const base = basePrices[ySymbol];
+
+            // Trust the API price entirely (removed aggressive pricing guard)
+            // because stocks undergo splits/bonuses rendering static base prices inaccurate.
+
+            console.log(`Execution price for ${ySymbol}: ₹${price}`);
+            return price;
         }
 
         console.warn(`Live price unavailable for ${symbol}, using mock.`);

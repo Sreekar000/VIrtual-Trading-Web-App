@@ -94,12 +94,18 @@ const getLiveQuote = async (symbol) => {
         const quote = await yahooFinance.quote(ySymbol);
         if (!quote || !quote.regularMarketPrice) return null;
 
+        const price = quote.regularMarketPrice;
+        const base = basePrices[ySymbol];
+
+        // Trust the API price entirely (removed aggressive pricing guard)
+        // because stocks undergo splits/bonuses rendering static base prices inaccurate.
+
         return {
-            c: quote.regularMarketPrice,
-            h: quote.regularMarketDayHigh || quote.regularMarketPrice,
-            l: quote.regularMarketDayLow || quote.regularMarketPrice,
-            o: quote.regularMarketOpen || quote.regularMarketPrice,
-            pc: quote.regularMarketPreviousClose || quote.regularMarketPrice,
+            c: price,
+            h: quote.regularMarketDayHigh || price,
+            l: quote.regularMarketDayLow || price,
+            o: quote.regularMarketOpen || price,
+            pc: quote.regularMarketPreviousClose || price,
             d: quote.regularMarketChange || 0,
             dp: quote.regularMarketChangePercent || 0,
             t: Date.now(),

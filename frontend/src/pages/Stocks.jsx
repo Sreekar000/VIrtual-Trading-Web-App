@@ -31,12 +31,19 @@ const Stocks = () => {
     const suggestionsRef = useRef(null);
     const debounceRef = useRef(null);
 
-    // Subscription management for selected stock
+    // Subscription management for selected stock and suggestions
     useEffect(() => {
         if (!selectedStock) return;
         subscribe(selectedStock, 'stock-detail');
         return () => unsubscribe(selectedStock, 'stock-detail');
     }, [selectedStock, subscribe, unsubscribe]);
+
+    useEffect(() => {
+        if (!suggestions.length) return;
+        const symbols = suggestions.map(s => s.symbol);
+        symbols.forEach(sym => subscribe(sym, 'search-suggestions'));
+        return () => symbols.forEach(sym => unsubscribe(sym, 'search-suggestions'));
+    }, [suggestions, subscribe, unsubscribe]);
 
     // Derived quote from MarketDataContext (shared) falling back to localQuote (initial)
     const quote = prices[selectedStock] || localQuote;
@@ -185,11 +192,13 @@ const Stocks = () => {
                                                     <p className="text-[11px] text-foreground/40 truncate">{highlightMatch(s.description, search)}</p>
                                                 </div>
                                                 <div className="text-right ml-3 flex-shrink-0">
-                                                    {s.price ? (
+                                                    {(prices[s.symbol]?.c || s.price) ? (
                                                         <>
-                                                            <p className="text-sm font-bold">₹{s.price?.toFixed(2)}</p>
-                                                            <p className={`text-[10px] font-bold ${(s.changePercent || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                                {(s.changePercent || 0) >= 0 ? '+' : ''}{s.changePercent?.toFixed(2)}%
+                                                            <p className={`text-sm font-bold ${(prices[s.symbol]?.priceDirection === 'up') ? 'text-emerald-400' : (prices[s.symbol]?.priceDirection === 'down') ? 'text-red-400' : ''}`}>
+                                                                ₹{(prices[s.symbol]?.c || s.price)?.toFixed(2)}
+                                                            </p>
+                                                            <p className={`text-[10px] font-bold ${(prices[s.symbol]?.dp || s.changePercent || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                                {(prices[s.symbol]?.dp || s.changePercent || 0) >= 0 ? '+' : ''}{(prices[s.symbol]?.dp || s.changePercent || 0).toFixed(2)}%
                                                             </p>
                                                         </>
                                                     ) : (<TrendingUp size={14} className="text-foreground/20" />)}

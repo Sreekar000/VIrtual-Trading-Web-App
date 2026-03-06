@@ -18,10 +18,31 @@ const Positions = () => {
     const { portfolio, stats, lifetimeStats, loading, sellStock } = usePortfolio();
     const [sellTarget, setSellTarget] = useState(null);
     const [expandedSection, setExpandedSection] = useState(null);
+    const [flashMap, setFlashMap] = useState({});
+    const prevPricesRef = React.useRef({});
 
     const toggleSection = (section) => {
         setExpandedSection(expandedSection === section ? null : section);
     };
+
+    // Detect price changes and trigger flash animations
+    React.useEffect(() => {
+        const newFlash = {};
+        portfolio.forEach(item => {
+            const prev = prevPricesRef.current[item.stockSymbol];
+            const current = item.currentPrice;
+            if (prev !== undefined && current !== prev) {
+                newFlash[item.stockSymbol] = current > prev ? 'up' : 'down';
+            }
+            prevPricesRef.current[item.stockSymbol] = current;
+        });
+
+        if (Object.keys(newFlash).length > 0) {
+            setFlashMap(newFlash);
+            const timer = setTimeout(() => setFlashMap({}), 1300);
+            return () => clearTimeout(timer);
+        }
+    }, [portfolio]);
 
     const isMarketOpen = () => {
         const now = new Date();
@@ -189,9 +210,11 @@ const Positions = () => {
                                         <td className="p-3 font-black">{item.stockSymbol.replace('.NS', '')}</td>
                                         <td className="p-3">{item.quantity}</td>
                                         <td className="p-3">₹{item.averagePrice?.toFixed(2)}</td>
-                                        <td className="p-3 font-bold text-primary">₹{item.currentPrice?.toFixed(2)}</td>
+                                        <td className={`p-3 font-bold transition-all duration-500 ${flashMap[item.stockSymbol] === 'up' ? 'price-flash-up text-emerald-400' : flashMap[item.stockSymbol] === 'down' ? 'price-flash-down text-red-400' : 'text-primary'}`}>
+                                            ₹{item.currentPrice?.toFixed(2)}
+                                        </td>
                                         <td className="p-3 font-medium">₹{item.value?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                                        <td className="p-3">
+                                        <td className={`p-3 ${flashMap[item.stockSymbol] === 'up' ? 'price-flash-up' : flashMap[item.stockSymbol] === 'down' ? 'price-flash-down' : ''}`}>
                                             <div className={`font-bold ${item.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                                 {item.profit >= 0 ? '+' : ''}₹{item.profit?.toFixed(2)}
                                                 <span className="text-xs ml-1">({item.profitPercent >= 0 ? '+' : ''}{item.profitPercent?.toFixed(1)}%)</span>

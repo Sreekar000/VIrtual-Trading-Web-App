@@ -10,6 +10,17 @@ import { Link } from 'react-router-dom';
 const Dashboard = () => {
     const { user } = useAuth();
     const { portfolio, stats, loading } = usePortfolio();
+    const [pnlFlash, setPnlFlash] = React.useState(null);
+    const prevProfitRef = React.useRef(0);
+
+    React.useEffect(() => {
+        if (stats.profit !== prevProfitRef.current) {
+            setPnlFlash(stats.profit > prevProfitRef.current ? 'up' : 'down');
+            prevProfitRef.current = stats.profit;
+            const timer = setTimeout(() => setPnlFlash(null), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [stats.profit]);
 
     const isMarketOpen = () => {
         const now = new Date();
@@ -20,12 +31,12 @@ const Dashboard = () => {
         return day >= 1 && day <= 5 && time >= 555 && time <= 930;
     };
 
-    const StatCard = ({ title, value, subValue, icon: Icon, colorClass, delay = 0 }) => (
+    const StatCard = ({ title, value, subValue, icon: Icon, colorClass, delay = 0, className = '' }) => (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: delay * 0.1, duration: 0.4 }}
-            className="glass-card p-6 flex items-start justify-between group hover:scale-[1.02] transition-transform duration-300"
+            className={`glass-card p-6 flex items-start justify-between group hover:scale-[1.02] transition-transform duration-300 ${className}`}
         >
             <div>
                 <p className="text-xs font-medium text-foreground/40 mb-1 uppercase tracking-wider">{title}</p>
@@ -87,6 +98,7 @@ const Dashboard = () => {
                     icon={BarChart3}
                     colorClass={stats.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}
                     delay={0}
+                    className={pnlFlash === 'up' ? 'price-flash-up' : pnlFlash === 'down' ? 'price-flash-down' : ''}
                 />
                 <StatCard
                     title="Cash Balance"
