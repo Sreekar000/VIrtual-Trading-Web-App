@@ -32,6 +32,21 @@ const getISTTimestamp = () => {
     return `${ist.getFullYear()}-${pad(ist.getMonth() + 1)}-${pad(ist.getDate())}T${pad(ist.getHours())}:${pad(ist.getMinutes())}:${pad(ist.getSeconds())}+05:30`;
 };
 
+// Check if NSE market is currently open (9:15 AM – 3:30 PM IST, Mon–Fri)
+const isMarketOpen = () => {
+    const now = new Date();
+    const offset = 5.5 * 60 * 60 * 1000;
+    const ist = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + offset);
+    const day = ist.getDay(); // 0=Sun, 6=Sat
+    if (day === 0 || day === 6) return false;
+    const hours = ist.getHours();
+    const minutes = ist.getMinutes();
+    const timeInMinutes = hours * 60 + minutes;
+    const marketOpen = 9 * 60 + 15;   // 9:15 AM
+    const marketClose = 15 * 60 + 30;  // 3:30 PM
+    return timeInMinutes >= marketOpen && timeInMinutes <= marketClose;
+};
+
 const getPrice = async (symbol) => {
     try {
         if (!yahooFinance) return getMockPrice(symbol);
@@ -66,6 +81,9 @@ const getMockPrice = (symbol) => {
 
 // Buy Stock
 router.post('/buy', auth, async (req, res) => {
+    if (!isMarketOpen()) {
+        return res.status(400).json({ message: 'Order cancelled — Market is closed. NSE trading hours: 9:15 AM – 3:30 PM IST (Mon–Fri).' });
+    }
     const t = await sequelize.transaction();
     try {
         const { symbol, quantity } = req.body;
@@ -124,6 +142,9 @@ router.post('/buy', auth, async (req, res) => {
 
 // Sell Stock
 router.post('/sell', auth, async (req, res) => {
+    if (!isMarketOpen()) {
+        return res.status(400).json({ message: 'Order cancelled — Market is closed. NSE trading hours: 9:15 AM – 3:30 PM IST (Mon–Fri).' });
+    }
     const t = await sequelize.transaction();
     try {
         const { symbol, quantity } = req.body;
