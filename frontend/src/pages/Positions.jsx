@@ -45,12 +45,22 @@ const Positions = () => {
     }, [portfolio]);
 
     const isMarketOpen = () => {
+        // Get current time in IST
         const now = new Date();
-        const hours = now.getHours();
-        const minutes = now.getMinutes();
-        const day = now.getDay();
-        const time = hours * 60 + minutes;
-        return day >= 1 && day <= 5 && time >= 555 && time <= 930; // 9:15 AM to 3:30 PM
+        const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+
+        const day = istTime.getUTCDay(); // 0-6, 0 is Sunday, 6 is Saturday
+        const hours = istTime.getUTCHours();
+        const minutes = istTime.getUTCMinutes();
+        const totalMinutes = hours * 60 + minutes;
+
+        const openTime = 9 * 60 + 15; // 9:15
+        const closeTime = 15 * 60 + 30; // 15:30
+
+        const isWeekday = day >= 1 && day <= 5;
+        const isWithinHours = totalMinutes >= openTime && totalMinutes <= closeTime;
+
+        return isWeekday && isWithinHours;
     };
 
     // Allocation data for pie chart

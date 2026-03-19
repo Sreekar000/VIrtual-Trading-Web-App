@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { Search, TrendingUp, TrendingDown, Activity, X, ArrowUp, ArrowDown, Star } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Activity, X, ArrowUp, ArrowDown, Star, BarChart3 } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Bar, ComposedChart } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTrade } from '../context/TradeContext';
 import { useAuth } from '../context/AuthContext';
@@ -26,6 +27,10 @@ const Stocks = () => {
     const [quoteLoading, setQuoteLoading] = useState(false);
     const [searchLoading, setSearchLoading] = useState(false);
     const [watchlistModal, setWatchlistModal] = useState(null); // { symbol, description }
+    const [showChart, setShowChart] = useState(false);
+    const [chartData, setChartData] = useState([]);
+    const [chartRange, setChartRange] = useState('1m');
+    const [chartLoading, setChartLoading] = useState(false);
 
     const searchRef = useRef(null);
     const suggestionsRef = useRef(null);
@@ -101,6 +106,27 @@ const Stocks = () => {
         } catch (err) { console.error(err); }
         finally { setQuoteLoading(false); }
     };
+
+    // Fetch chart data when stock or range changes
+    const fetchChart = useCallback(async (symbol, range) => {
+        if (!symbol) return;
+        setChartLoading(true);
+        try {
+            const res = await axios.get(`${API_BASE_URL}/stocks/chart/${symbol}?range=${range}`);
+            setChartData(res.data.data || []);
+        } catch (err) {
+            console.error('Chart fetch error:', err);
+            setChartData([]);
+        } finally {
+            setChartLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (showChart && selectedStock) {
+            fetchChart(selectedStock, chartRange);
+        }
+    }, [showChart, selectedStock, chartRange, fetchChart]);
 
     const handleTrade = async (type) => {
         const result = await executeTrade(type, selectedStock, quantity);
@@ -255,6 +281,175 @@ const Stocks = () => {
                                         <p className="font-bold">₹{value?.toFixed(2)}</p>
                                     </div>
                                 ))}
+                            </div>
+
+                            {/* Chart Toggle + Chart */}
+                            <div className="space-y-4">
+                                <button
+                                    onClick={() => setShowChart(!showChart)}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${showChart
+                                        ? 'bg-primary/10 text-primary ring-1 ring-primary/30'
+                                        : 'bg-background/50 text-foreground/60 hover:bg-background/80 hover:text-foreground'
+                                        }`}
+                                    id="chart-toggle-button"
+                                >
+                                    <BarChart3 size={16} />
+                                    {showChart ? 'Hide Chart' : 'Show Chart'}
+                                </button>
+
+                                <AnimatePresence>
+                                    {showChart && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            transition={{ duration: 0.3 }}
+                                            className="overflow-hidden"
+                                        >
+                                            <div className="bg-background/30 rounded-2xl border border-border/20 p-5 space-y-4">
+                                                {/* Time Range Tabs */}
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-xs font-bold text-foreground/40 uppercase tracking-wider">Price Chart</p>
+                                                    <div className="flex gap-1 bg-background/50 rounded-lg p-1">
+                                                        {['1d', '1w', '1m', '3m', '1y'].map((r) => (
+                                                            <button
+                                                                key={r}
+                                                                onClick={() => setChartRange(r)}
+                                                                className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition-all ${chartRange === r
+                                                                    ? 'bg-primary text-white shadow-md shadow-primary/20'
+                                                                    : 'text-foreground/40 hover:text-foreground/70'
+                                                                    }`}
+                                                            >
+                                                                {r.toUpperCase()}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Chart Area */}
+                                                <div className="h-[320px] w-full mt-4">
+                                                    {chartLoading ? (
+                                                        <div className="h-full flex items-center justify-center">
+                                                            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                                        </div>
+                                                    ) : chartData.length > 0 ? (
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <ComposedChart data={chartData} margin={{ top: 10, right: 5, left: 0, bottom: 0 }}>
+                                                                <defs>
+                                                                    <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                        <stop
+                                                                            offset="0%"
+                                                                            stopColor={chartData[chartData.length - 1]?.close >= chartData[0]?.close ? '#10b981' : '#ef4444'}
+                                                                            stopOpacity={0.2}
+                                                                        />
+                                                                        <stop
+                                                                            offset="100%"
+                                                                            stopColor={chartData[chartData.length - 1]?.close >= chartData[0]?.close ? '#10b981' : '#ef4444'}
+                                                                            stopOpacity={0}
+                                                                        />
+                                                                    </linearGradient>
+                                                                </defs>
+                                                                <XAxis
+                                                                    dataKey="date"
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.3 }}
+                                                                    interval={Math.max(0, Math.floor(chartData.length / 6))}
+                                                                />
+                                                                <YAxis
+                                                                    yAxisId="price"
+                                                                    domain={['auto', 'auto']}
+                                                                    axisLine={false}
+                                                                    tickLine={false}
+                                                                    tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.3 }}
+                                                                    width={60}
+                                                                    tickFormatter={(v) => `₹${v.toLocaleString()}`}
+                                                                />
+                                                                <YAxis
+                                                                    yAxisId="volume"
+                                                                    orientation="right"
+                                                                    domain={[0, (dataMax) => dataMax * 4]}
+                                                                    hide
+                                                                />
+                                                                <Tooltip
+                                                                    content={({ active, payload, label }) => {
+                                                                        if (active && payload && payload.length) {
+                                                                            const d = payload[0].payload;
+                                                                            return (
+                                                                                <div className="glass-card p-3 shadow-2xl border border-border/50 text-[11px] space-y-1 min-w-[140px]">
+                                                                                    <p className="font-bold border-b border-border/20 pb-1 mb-1">{d.date}</p>
+                                                                                    <div className="flex justify-between gap-4">
+                                                                                        <span className="text-foreground/40">Close:</span>
+                                                                                        <span className="font-bold text-primary">₹{d.close.toLocaleString()}</span>
+                                                                                    </div>
+                                                                                    {d.open && (
+                                                                                        <div className="flex justify-between gap-4">
+                                                                                            <span className="text-foreground/40">Open:</span>
+                                                                                            <span className="font-medium">₹{d.open.toLocaleString()}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {d.high && (
+                                                                                        <div className="flex justify-between gap-4 text-emerald-400/80">
+                                                                                            <span>High:</span>
+                                                                                            <span>₹{d.high.toLocaleString()}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {d.low && (
+                                                                                        <div className="flex justify-between gap-4 text-red-400/80">
+                                                                                            <span>Low:</span>
+                                                                                            <span>₹{d.low.toLocaleString()}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {d.volume > 0 && (
+                                                                                        <div className="flex justify-between gap-4 pt-1 border-t border-border/10">
+                                                                                            <span className="text-foreground/40">Vol:</span>
+                                                                                            <span>{d.volume.toLocaleString()}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        return null;
+                                                                    }}
+                                                                />
+                                                                <Bar
+                                                                    yAxisId="volume"
+                                                                    dataKey="volume"
+                                                                    fill="currentColor"
+                                                                    opacity={0.1}
+                                                                    radius={[2, 2, 0, 0]}
+                                                                />
+                                                                <Area
+                                                                    yAxisId="price"
+                                                                    type="monotone"
+                                                                    dataKey="close"
+                                                                    stroke={chartData[chartData.length - 1]?.close >= chartData[0]?.close ? '#10b981' : '#ef4444'}
+                                                                    strokeWidth={2}
+                                                                    fill="url(#chartGradient)"
+                                                                    animationDuration={800}
+                                                                />
+                                                            </ComposedChart>
+                                                        </ResponsiveContainer>
+                                                    ) : (
+                                                        <div className="h-full flex items-center justify-center text-foreground/30 text-sm">
+                                                            No chart data available
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Chart Stats */}
+                                                {chartData.length > 1 && (
+                                                    <div className="flex items-center justify-between text-[11px] text-foreground/40 pt-2 border-t border-border/10">
+                                                        <span>Range: ₹{Math.min(...chartData.map(d => d.low || d.close)).toFixed(2)} — ₹{Math.max(...chartData.map(d => d.high || d.close)).toFixed(2)}</span>
+                                                        <span className={`font-bold ${chartData[chartData.length - 1]?.close >= chartData[0]?.close ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                            {((chartData[chartData.length - 1]?.close - chartData[0]?.close) / chartData[0]?.close * 100).toFixed(2)}% over period
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
 
                             <div className="bg-background/30 p-6 rounded-2xl border border-border/20 space-y-6">

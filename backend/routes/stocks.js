@@ -224,4 +224,89 @@ router.post('/quotes', auth, async (req, res) => {
     }
 });
 
+// Get Historical Chart Data
+router.get('/chart/:symbol', auth, async (req, res) => {
+    const { symbol } = req.params;
+    const { range = '1m' } = req.query; // 1d, 1w, 1m, 3m, 1y
+
+    try {
+        if (!yahooFinance) {
+            return res.json(generateMockChart(symbol, range));
+        }
+
+        const ySymbol = symbol.endsWith('.NS') || symbol.endsWith('.BO') ? symbol : `${symbol}.NS`;
+
+        // Map range to yahoo-finance2 parameters
+        const rangeMap = {
+            '1d': { period1: daysAgo(1), interval: '5m' },
+            '1w': { period1: daysAgo(7), interval: '15m' },
+            '1m': { period1: daysAgo(30), interval: '1d' },
+            '3m': { period1: daysAgo(90), interval: '1d' },
+            '1y': { period1: daysAgo(365), interval: '1wk' }
+        };
+
+        const config = rangeMap[range] || rangeMap['1m'];
+
+        const result = await yahooFinance.chart(ySymbol, {
+            period1: config.period1,
+            period2: new Date(),
+            interval: config.interval
+        });
+
+        if (result && result.quotes && result.quotes.length > 0) {
+            const chartData = result.quotes
+                .filter(q => q.close !== null && q.close !== undefined)
+                .map(q => ({
+                    time: new Date(q.date).getTime(),
+                    date: new Date(q.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+                    close: parseFloat(q.close.toFixed(2)),
+                    open: q.open ? parseFloat(q.open.toFixed(2)) : null,
+                    high: q.high ? parseFloat(q.high.toFixed(2)) : null,
+                    low: q.low ? parseFloat(q.low.toFixed(2)) : null,
+                    volume: q.volume || 0
+                }));
+
+            return res.json({ data: chartData, symbol: ySymbol, range });
+        }
+
+        // Fallback to mock
+        console.warn(`No chart data for ${symbol}, using mock.`);
+        res.json(generateMockChart(symbol, range));
+    } catch (err) {
+        console.error('Chart data error:', err.message);
+        res.json(generateMockChart(symbol, range));
+    }
+});
+
+function daysAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d;
+}
+
+function generateMockChart(symbol, range) {
+    const base = basePrices[symbol] || basePrices[`${symbol}.NS`] || 1000;
+    const points = range === '1d' ? 78 : range === '1w' ? 35 : range === '1m' ? 30 : range === '3m' ? 90 : 52;
+    const data = [];
+    let price = base * 0.95;
+
+    for (let i = 0; i < points; i++) {
+        price += (Math.random() - 0.48) * (base * 0.02);
+        price = Math.max(price, base * 0.7);
+        const d = new Date();
+        d.setDate(d.getDate() - (points - i));
+        data.push({
+            time: d.getTime(),
+            date: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+            close: parseFloat(price.toFixed(2)),
+            open: parseFloat((price - Math.random() * 5).toFixed(2)),
+            high: parseFloat((price + Math.random() * 10).toFixed(2)),
+            low: parseFloat((price - Math.random() * 10).toFixed(2)),
+            volume: Math.floor(Math.random() * 1000000)
+        });
+    }
+
+    return { data, symbol, range, isMock: true };
+}
+
 module.exports = router;

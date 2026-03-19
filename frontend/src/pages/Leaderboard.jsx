@@ -68,8 +68,12 @@ const Leaderboard = () => {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <span className="font-black text-xl">₹{leader.balance.toLocaleString('en-IN')}</span>
-                                    <p className="text-xs text-green-500 font-bold">+0.00%</p>
+                                    <span className="font-black text-xl" title={`Balance: ₹${leader.balance.toLocaleString()} | Holdings: ₹${leader.portfolioValue.toLocaleString()}`}>
+                                        ₹{leader.totalWorth.toLocaleString('en-IN')}
+                                    </span>
+                                    <p className={`text-xs font-bold ${leader.profitPercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        {leader.profitPercent >= 0 ? '+' : ''}{leader.profitPercent.toFixed(2)}%
+                                    </p>
                                 </div>
                             </div>
                         ))
