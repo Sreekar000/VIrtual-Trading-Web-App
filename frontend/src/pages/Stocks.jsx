@@ -30,6 +30,7 @@ const Stocks = () => {
     const [showChart, setShowChart] = useState(false);
     const [chartData, setChartData] = useState([]);
     const [chartRange, setChartRange] = useState('1m');
+    const [chartType, setChartType] = useState('line'); // 'line' or 'candle'
     const [chartLoading, setChartLoading] = useState(false);
 
     const searchRef = useRef(null);
@@ -113,7 +114,11 @@ const Stocks = () => {
         setChartLoading(true);
         try {
             const res = await axios.get(`${API_BASE_URL}/stocks/chart/${symbol}?range=${range}`);
-            setChartData(res.data.data || []);
+            const chartData = (res.data.data || []).map(d => ({
+                ...d,
+                candleRange: [d.open || d.close, d.close]
+            }));
+            setChartData(chartData);
         } catch (err) {
             console.error('Chart fetch error:', err);
             setChartData([]);
@@ -127,6 +132,32 @@ const Stocks = () => {
             fetchChart(selectedStock, chartRange);
         }
     }, [showChart, selectedStock, chartRange, fetchChart]);
+
+    // Custom Candlestick shape for Recharts
+    const Candlestick = (props) => {
+        const { x, y, width, height, payload } = props;
+        const { low, high, open, close } = payload;
+        if (low === undefined || high === undefined) return null;
+
+        const isUp = close >= open;
+        const color = isUp ? '#10b981' : '#ef4444';
+
+        // Recharts Bar with dataKey="candleRange" already calculates y and height
+        // to cover the [open, close] range. We can use this to derive the pixel scale.
+        const bodyHeight = Math.max(Math.abs(height), 1);
+        const priceRange = Math.abs(open - close) || 0.01;
+        const pixelPerUnit = bodyHeight / priceRange;
+
+        const wickHighY = y - (high - Math.max(open, close)) * pixelPerUnit;
+        const wickLowY = y + bodyHeight + (Math.min(open, close) - low) * pixelPerUnit;
+
+        return (
+            <g>
+                <line x1={x + width / 2} y1={wickHighY} x2={x + width / 2} y2={wickLowY} stroke={color} strokeWidth={1.5} />
+                <rect x={x} y={y} width={width} height={bodyHeight} fill={color} rx={1} />
+            </g>
+        );
+    };
 
     const handleTrade = async (type) => {
         const result = await executeTrade(type, selectedStock, quantity);
@@ -307,9 +338,28 @@ const Stocks = () => {
                                             className="overflow-hidden"
                                         >
                                             <div className="bg-background/30 rounded-2xl border border-border/20 p-5 space-y-4">
-                                                {/* Time Range Tabs */}
-                                                <div className="flex items-center justify-between">
-                                                    <p className="text-xs font-bold text-foreground/40 uppercase tracking-wider">Price Chart</p>
+                                                {/* Time Range Tabs + Chart Type Toggle */}
+                                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-4">
+                                                        <p className="text-xs font-bold text-foreground/40 uppercase tracking-wider">Price Chart</p>
+                                                        <div className="flex gap-1 bg-background/50 rounded-lg p-1">
+                                                            {[
+                                                                { id: 'line', label: 'Line' },
+                                                                { id: 'candle', label: 'Candles' }
+                                                            ].map((t) => (
+                                                                <button
+                                                                    key={t.id}
+                                                                    onClick={() => setChartType(t.id)}
+                                                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${chartType === t.id
+                                                                        ? 'bg-primary/20 text-primary'
+                                                                        : 'text-foreground/40 hover:text-foreground/70'
+                                                                        }`}
+                                                                >
+                                                                    {t.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                     <div className="flex gap-1 bg-background/50 rounded-lg p-1">
                                                         {['1d', '1w', '1m', '3m', '1y'].map((r) => (
                                                             <button
@@ -419,15 +469,24 @@ const Stocks = () => {
                                                                     opacity={0.1}
                                                                     radius={[2, 2, 0, 0]}
                                                                 />
-                                                                <Area
-                                                                    yAxisId="price"
-                                                                    type="monotone"
-                                                                    dataKey="close"
-                                                                    stroke={chartData[chartData.length - 1]?.close >= chartData[0]?.close ? '#10b981' : '#ef4444'}
-                                                                    strokeWidth={2}
-                                                                    fill="url(#chartGradient)"
-                                                                    animationDuration={800}
-                                                                />
+                                                                {chartType === 'line' ? (
+                                                                    <Area
+                                                                        yAxisId="price"
+                                                                        type="monotone"
+                                                                        dataKey="close"
+                                                                        stroke={chartData[chartData.length - 1]?.close >= chartData[0]?.close ? '#10b981' : '#ef4444'}
+                                                                        strokeWidth={2}
+                                                                        fill="url(#chartGradient)"
+                                                                        animationDuration={800}
+                                                                    />
+                                                                ) : (
+                                                                    <Bar
+                                                                        yAxisId="price"
+                                                                        dataKey="candleRange"
+                                                                        shape={<Candlestick />}
+                                                                        animationDuration={800}
+                                                                    />
+                                                                )}
                                                             </ComposedChart>
                                                         </ResponsiveContainer>
                                                     ) : (
@@ -499,6 +558,7 @@ const Stocks = () => {
                                 <button onClick={() => setWatchlistModal(null)} className="text-foreground/40 hover:text-foreground"><X size={18} /></button>
                             </div>
                             <p className="text-sm text-foreground/50">Add <span className="font-bold text-foreground">{watchlistModal.symbol?.replace('.NS', '')}</span> to:</p>
+
                             <div className="space-y-1 max-h-48 overflow-y-auto">
                                 {watchlists.map(wl => (
                                     <button key={wl.id} onClick={() => handleAddToWatchlist(wl.id)}
