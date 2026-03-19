@@ -31,7 +31,7 @@ const Dashboard = () => {
         return day >= 1 && day <= 5 && time >= 555 && time <= 930;
     };
 
-    const StatCard = ({ title, value, subValue, icon: Icon, colorClass, delay = 0, className = '' }) => (
+    const StatCard = ({ title, value, subValue, icon: Icon, colorClass, subColorClass, delay = 0, className = '' }) => (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -41,7 +41,7 @@ const Dashboard = () => {
             <div>
                 <p className="text-xs font-medium text-foreground/40 mb-1 uppercase tracking-wider">{title}</p>
                 <h3 className="text-2xl font-black">{value}</h3>
-                {subValue && <p className={`text-sm mt-1 font-bold ${colorClass}`}>{subValue}</p>}
+                {subValue && <p className={`text-sm mt-1 font-bold ${subColorClass || colorClass}`}>{subValue}</p>}
             </div>
             <div className={`p-3 rounded-xl ${colorClass?.includes('green') || colorClass?.includes('emerald') ? 'bg-emerald-500/10' : colorClass?.includes('red') ? 'bg-red-500/10' : colorClass?.includes('purple') ? 'bg-purple-500/10' : 'bg-primary/10'}`}>
                 <Icon className={colorClass || 'text-primary'} size={22} />
@@ -113,6 +113,7 @@ const Dashboard = () => {
                     subValue={portfolio.length > 0 ? `${stats.dayChange >= 0 ? '+' : ''}₹${stats.dayChange?.toFixed(2)} today` : undefined}
                     icon={Briefcase}
                     colorClass="text-purple-400"
+                    subColorClass={stats.dayChange >= 0 ? 'text-emerald-400' : 'text-red-400'}
                     delay={2}
                 />
             </div>

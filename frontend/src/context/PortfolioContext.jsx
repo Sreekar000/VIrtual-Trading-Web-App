@@ -47,10 +47,26 @@ export const PortfolioProvider = ({ children }) => {
         };
     }, [portfolioItems, subscribe, unsubscribe]);
 
+    // Helper to check if a date is "today" in IST
+    const isTodayIST = (dateString) => {
+        if (!dateString) return false;
+        try {
+            const date = new Date(dateString);
+            const istNow = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+            const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+
+            return istNow.getUTCDate() === istDate.getUTCDate() &&
+                istNow.getUTCMonth() === istDate.getUTCMonth() &&
+                istNow.getUTCFullYear() === istDate.getUTCFullYear();
+        } catch (e) {
+            return false;
+        }
+    };
+
     // Reactively compute enriched portfolio and stats when prices OR items change
     useEffect(() => {
         if (!portfolioItems.length) {
-            setStats(prev => ({ ...prev, totalValue: user?.balance || 0, totalInvested: 0, profit: 0, profitPercent: 0 }));
+            setStats(prev => ({ ...prev, totalValue: user?.balance || 0, totalInvested: 0, profit: 0, profitPercent: 0, dayChange: 0 }));
             return;
         }
 
@@ -63,7 +79,14 @@ export const PortfolioProvider = ({ children }) => {
             const currentPrice = quote?.c || item.averagePrice;
             const value = currentPrice * item.quantity;
             const invested = item.averagePrice * item.quantity;
-            const itemDayChange = (quote?.d || 0) * item.quantity;
+
+            // If bought today, day change is relative to buy price. Else, relative to prev close.
+            let itemDayChange = 0;
+            if (isTodayIST(item.firstBuyDate)) {
+                itemDayChange = (currentPrice - item.averagePrice) * item.quantity;
+            } else {
+                itemDayChange = (quote?.d || 0) * item.quantity;
+            }
 
             currentTotalValue += value;
             totalInvested += invested;
@@ -95,14 +118,25 @@ export const PortfolioProvider = ({ children }) => {
             const profit = value - invested;
             const profitPercent = invested > 0 ? (profit / invested) * 100 : 0;
 
+            let itemDayChange = 0;
+            let itemDayChangePercent = 0;
+
+            if (isTodayIST(item.firstBuyDate)) {
+                itemDayChange = (currentPrice - item.averagePrice) * item.quantity;
+                itemDayChangePercent = item.averagePrice > 0 ? ((currentPrice - item.averagePrice) / item.averagePrice) * 100 : 0;
+            } else {
+                itemDayChange = (quote?.d || 0) * item.quantity;
+                itemDayChangePercent = quote?.dp || 0;
+            }
+
             return {
                 ...item,
                 currentPrice,
                 value,
                 profit,
                 profitPercent,
-                dayChange: (quote?.d || 0) * item.quantity,
-                dayChangePercent: quote?.dp || 0,
+                dayChange: itemDayChange,
+                dayChangePercent: itemDayChangePercent,
                 open: quote?.o,
                 high: quote?.h,
                 low: quote?.l,
